@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#fafafa">
+  <title>MKV to MP4</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main>
+    <h1>MKV to MP4</h1>
+    <p class="intro">Your video, in a more familiar format.</p>
+    <form id="convert-form">
+      <label for="video-file">MKV video</label>
+      <div id="drop-zone" class="drop-zone">
+        <input id="video-file" type="file" accept=".mkv,video/x-matroska">
+        <span class="file-icon" aria-hidden="true">↑</span>
+        <span id="file-name">Drop an MKV file here</span>
+        <span id="file-detail">or click to choose · up to 20 GB</span>
+      </div>
+      <div class="mode-row">
+        <label for="mode">Conversion</label>
+        <select id="mode">
+          <option value="auto">Auto · preserve quality when possible</option>
+          <option value="compatible">Re-encode · H.264 / AAC</option>
+        </select>
+      </div>
+      <p class="hint">Auto copies compatible video without quality loss. Other video converts to H.264. Audio tracks are kept as AAC; subtitles and attachments are left out.</p>
+      <button class="convert-button" id="convert-button" type="submit" disabled>Convert to MP4</button>
+    </form>
+    <div id="result" class="result" aria-live="polite" hidden>
+      <div class="result-title"><span id="status"></span><span id="percent"></span></div>
+      <div class="progress" role="progressbar" aria-label="Conversion progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progress-fill"></div></div>
+      <p id="detail"></p>
+      <a id="download" class="download-link" hidden download>Save MP4 <span>↓</span></a>
+      <button id="cancel" class="cancel-button" type="button" hidden>Cancel</button>
+    </div>
+    <p class="privacy">Files stay on this Mac. No account, no uploads to the cloud.</p>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

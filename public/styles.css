@@ -1,0 +1,59 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #171717;
+  background: #fafafa;
+  font-weight: 300;
+  font-synthesis: none;
+  --accent: #171717;
+  --border: #e2e2e2;
+  --muted: #747474;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 96px 24px 40px; }
+main { width: 100%; max-width: 480px; margin: 0 auto; }
+h1 { margin: 0 0 8px; font-size: 25px; font-weight: 300; letter-spacing: -.7px; }
+.intro { margin: 0 0 32px; color: var(--muted); font-size: 14px; }
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled, select:disabled { opacity: .6; cursor: wait; }
+button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+label, .field-label { display: block; color: #646464; font-size: 12px; margin-bottom: 9px; }
+.url-field { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--border); border-radius: 7px; background: #ffffff; }
+.url-field:focus-within { border-color: var(--accent); }
+input { width: 100%; min-width: 0; padding: 8px 6px; border: 0; outline: 0; color: inherit; background: transparent; font-size: 13px; }
+input::placeholder { color: #8a8a8a; }
+.paste-button { background: #f3f3f3; color: #444444; border: 0; border-radius: 4px; padding: 8px 12px; font-size: 12px; }
+.options-row { display: flex; justify-content: space-between; gap: 16px; margin: 24px 0; }
+.format-options { display: flex; gap: 7px; }
+.format { padding: 10px 13px; border: 1px solid var(--border); border-radius: 5px; color: #757575; background: transparent; font-size: 12px; }
+.format small { font-size: 11px; margin-left: 4px; opacity: .65; }
+.format.selected { color: var(--accent); border-color: #9c9c9c; background: #f0f0f0; }
+select { height: 37px; padding: 0 30px 0 12px; border: 1px solid var(--border); border-radius: 5px; background: #ffffff; color: inherit; font-size: 12px; }
+.convert-button { width: 100%; padding: 13px 18px; border: 0; border-radius: 6px; color: #ffffff; background: var(--accent); font-size: 13px; font-weight: 300; }
+.convert-button:hover { background: #333333; }
+.result { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--border); }
+.result-title { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; }
+.result p { font-size: 12px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.progress { height: 4px; border-radius: 4px; background: #e8e8e8; margin: 14px 0; overflow: hidden; }
+.progress > div { height: 100%; border-radius: 4px; background: var(--accent); transition: width .5s; }
+.error { color: #404040 !important; }
+.download-link { display: inline-flex; gap: 20px; padding: 10px 15px; background: var(--accent); border-radius: 5px; color: #ffffff; font-size: 13px; text-decoration: none; }
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); padding: 12px 18px; border-radius: 6px; background: var(--accent); color: #ffffff; font-size: 12px; }
+[hidden] { display: none !important; }
+@media (max-width: 480px) { body { padding: 48px 20px; } .format { padding: 10px; } .format small { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+body { padding-top: 64px; }
+.drop-zone { position: relative; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 27px 20px; border: 1px dashed #c7c7c7; border-radius: 7px; background: #fff; text-align: center; }
+.drop-zone:hover, .drop-zone.dragging, .drop-zone:focus-within { border-color: #171717; background: #f3f3f3; }
+.drop-zone input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.drop-zone.locked { opacity: .6; }
+.file-icon { font-size: 26px; font-weight: 300; }
+#file-name { font-size: 13px; overflow-wrap: anywhere; max-width: 100%; }
+#file-detail { color: var(--muted); font-size: 11px; }
+.mode-row { margin-top: 24px; }
+.mode-row select { width: 100%; }
+.hint { margin: 12px 0 22px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.privacy { margin-top: 25px; color: #8a8a8a; font-size: 11px; text-align: center; }
+.cancel-button { border: 0; color: #646464; background: transparent; font-size: 12px; padding: 8px 0; text-decoration: underline; }
+.convert-button:disabled { cursor: default; }
