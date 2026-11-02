@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import http from 'node:http';
@@ -8,7 +9,7 @@ import { join } from 'node:path';
 
 const temporary = await mkdtemp(join(tmpdir(), 'mkvmp4-test-'));
 process.env.CONVERSIONS_DIR = join(temporary, 'jobs');
-const { server, stopConversions, prepareStorage, conversionPlan, validateFilename } = await import('../server.mjs');
+const { server, stopConversions, prepareStorage, conversionPlan, validateFilename, encodeVideo } = await import('../server.mjs');
 let base;
 before(async () => {
   await prepareStorage();
@@ -34,6 +35,40 @@ test('plans preserve compatible video and every audio track, transcoding incompa
   assert.equal(conversionPlan(info(), 'compatible').copyVideo, false);
   assert.throws(() => conversionPlan({ format: { format_name: 'mov,mp4' } }, 'auto'));
   assert.throws(() => conversionPlan(info(), 'invalid'));
+});
+test('hardware encoding uses resolution-scaled bitrate and software retains CRF encoding', () => {
+  const source = info('ffv1');
+  Object.assign(source.streams[0], { width: 1920, height: 1080, avg_frame_rate: '30/1' });
+  const hardware = conversionPlan(source, 'auto', true);
+  assert.equal(hardware.encoder, 'h264_videotoolbox');
+  assert.equal(hardware.args[hardware.args.indexOf('-b:v') + 1], '7464960');
+  assert.equal(hardware.args[hardware.args.indexOf('-allow_sw') + 1], '0');
+  const software = conversionPlan(source, 'auto', false);
+  assert.equal(software.encoder, 'libx264'); assert.ok(software.args.includes('-crf'));
+  assert.equal(conversionPlan(info(), 'auto', true).encoder, 'copy');
+});
+test('hardware failure retries a real software conversion and replaces partial output', { skip: process.platform !== 'darwin' || process.env.FFMPEG_HWACCEL === '0' }, async () => {
+  const input = join(temporary, 'fallback.mkv'), output = join(temporary, 'fallback.mp4');
+  execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=24:duration=1', '-c:v', 'ffv1', input]);
+  const source = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', input], { encoding: 'utf8' }));
+  const job = { mode: 'auto', input, file: output, status: 'analyzing', progress: 0 };
+  const calls = [];
+  await encodeVideo(job, source, async (job, executable, args) => {
+    calls.push(args[args.indexOf('-c:v') + 1]);
+    if (calls.length === 1) { await writeFile(output, 'partial hardware output'); throw new Error('Hardware busy'); }
+    await promisify(execFile)(executable, args);
+  });
+  assert.deepEqual(calls, ['h264_videotoolbox', 'libx264']);
+  assert.equal(job.encoder, 'libx264'); assert.equal(job.hardwareFallback, true);
+  assert.match(job.method, /CPU/);
+  const actual = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', output], { encoding: 'utf8' }));
+  assert.equal(actual.streams[0].codec_name, 'h264');
+});
+test('cancelled hardware jobs never start a CPU fallback', async () => {
+  const job = { mode: 'compatible', status: 'analyzing' };
+  let calls = 0;
+  await assert.rejects(encodeVideo(job, info(), async () => { calls++; job.status = 'cancelled'; throw new Error('Cancelled'); }));
+  assert.equal(calls, 1); assert.equal(job.hardwareFallback, undefined);
 });
 test('validates file names and rejects foreign origins and hostnames', async () => {
   assert.equal(validateFilename('Movie.MKV'), 'Movie.MKV');
@@ -68,6 +103,8 @@ for (const [codec, mode] of [['libx264', 'auto'], ['ffv1', 'auto'], ['libx264', 
     const id = await uploadFile(file, mode, 'My video 日本語.mkv');
     const job = await waitJob(id);
     assert.equal(job.status, 'complete', job.error);
+    if (mode === 'auto' && codec === 'libx264') assert.equal(job.encoder, 'copy');
+    else if (process.env.FFMPEG_HWACCEL === '0' || process.platform !== 'darwin') assert.equal(job.encoder, 'libx264');
     assert.equal(job.progress, 100); assert.equal(job.audioTracks, 2);
     assert.equal(job.file, undefined); assert.equal(job.directory, undefined);
     const download = await fetch(`${base}/api/jobs/${id}/download`);

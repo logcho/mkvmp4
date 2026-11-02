@@ -22,7 +22,7 @@ export function validateFilename(value) {
   return value;
 }
 
-export function conversionPlan(info, mode) {
+export function conversionPlan(info, mode, hardware = process.platform === 'darwin' && process.env.FFMPEG_HWACCEL !== '0') {
   if (!['auto', 'compatible'].includes(mode)) throw new Error('Choose a supported conversion mode.');
   if (!info.format?.format_name?.split(',').includes('matroska')) throw new Error('This file is not a valid MKV video.');
   const video = info.streams?.find(stream => stream.codec_type === 'video' && !stream.disposition?.attached_pic);
@@ -31,15 +31,50 @@ export function conversionPlan(info, mode) {
   const copyVideo = mode === 'auto' && video.codec_name === 'h264' && ['yuv420p', 'yuvj420p'].includes(video.pix_fmt);
   const args = ['-map', `0:${video.index}`];
   audio.forEach(stream => args.push('-map', `0:${stream.index}`));
-  args.push('-c:v', copyVideo ? 'copy' : 'libx264');
-  if (!copyVideo) args.push('-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2');
+  const encoder = copyVideo ? 'copy' : hardware ? 'h264_videotoolbox' : 'libx264';
+  args.push('-c:v', encoder);
+  if (!copyVideo) {
+    if (hardware) {
+      // Scale the bitrate with source resolution and frame rate. VideoToolbox
+      // does not use x264's CRF scale; require real hardware, then retry in software.
+      const [numerator, denominator] = String(video.avg_frame_rate || '').split('/').map(Number);
+      const fps = numerator / denominator || 30;
+      const bitrate = Math.round(Math.max(1e6, Math.min(80e6, (video.width || 1920) * (video.height || 1080) * fps * .12)));
+      args.push('-allow_sw', '0', '-b:v', String(bitrate));
+    } else args.push('-preset', 'fast', '-crf', '20');
+    args.push('-pix_fmt', 'yuv420p', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2');
+  }
   audio.forEach((stream, index) => {
     const copyAudio = mode === 'auto' && stream.codec_name === 'aac';
     args.push(`-c:a:${index}`, copyAudio ? 'copy' : 'aac');
     if (!copyAudio) args.push(`-b:a:${index}`, '192k');
   });
   args.push('-sn', '-dn', '-map_chapters', '0', '-movflags', '+faststart');
-  return { args, copyVideo, duration: Number(info.format.duration) || 0, audioTracks: audio.length };
+  return { args, encoder, copyVideo, duration: Number(info.format.duration) || 0, audioTracks: audio.length };
+}
+
+export async function encodeVideo(job, info, execute = run) {
+  let plan = conversionPlan(info, job.mode);
+  job.duration = plan.duration;
+  job.audioTracks = plan.audioTracks;
+  const encode = async () => {
+    if (job.status === 'cancelled') throw new Error('Conversion cancelled.');
+    job.encoder = plan.encoder;
+    job.method = plan.copyVideo ? 'Copying video without quality loss' : plan.encoder === 'h264_videotoolbox' ? 'Encoding with Apple video hardware' : job.hardwareFallback ? 'Encoding with CPU · hardware unavailable' : 'Encoding with CPU';
+    job.status = 'converting';
+    await execute(job, ffmpeg, ['-hide_banner', '-nostdin', '-y', '-i', job.input, ...plan.args, '-progress', 'pipe:1', '-nostats', job.file], line => {
+      const match = /^out_time_us=(\d+)$/.exec(line);
+      if (match && plan.duration) job.progress = Math.min(99, Number(match[1]) / 1e6 / plan.duration * 100);
+    });
+  };
+  try { await encode(); }
+  catch (error) {
+    if (job.status === 'cancelled' || plan.encoder !== 'h264_videotoolbox') throw error;
+    job.hardwareFallback = true;
+    job.progress = 0;
+    plan = conversionPlan(info, job.mode, false);
+    await encode();
+  }
 }
 
 function run(job, executable, args, onLine) {
@@ -73,16 +108,8 @@ async function convert(job) {
   try {
     job.status = 'analyzing';
     const info = JSON.parse(await run(job, ffprobe, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', job.input]));
-    const plan = conversionPlan(info, job.mode);
     if (job.status === 'cancelled') return;
-    job.method = plan.copyVideo ? 'Copying video without quality loss' : 'Encoding H.264 video';
-    job.duration = plan.duration;
-    job.audioTracks = plan.audioTracks;
-    job.status = 'converting';
-    await run(job, ffmpeg, ['-hide_banner', '-nostdin', '-y', '-i', job.input, ...plan.args, '-progress', 'pipe:1', '-nostats', job.file], line => {
-      const match = /^out_time_us=(\d+)$/.exec(line);
-      if (match && plan.duration) job.progress = Math.min(99, Number(match[1]) / 1e6 / plan.duration * 100);
-    });
+    await encodeVideo(job, info);
     if (job.status === 'cancelled') return;
     job.size = (await stat(job.file)).size;
     job.status = 'complete'; job.progress = 100;
